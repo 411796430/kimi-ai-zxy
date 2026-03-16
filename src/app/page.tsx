@@ -6,9 +6,9 @@ import { Input } from '@/components/ui/input';
 import { useGradientGenerator } from '@/hooks/useGradientGenerator';
 import { colorPresets } from '@/lib/constants';
 import { colorToParam } from '@/lib/utils';
+import { ColorSelector } from '@/components/ColorSelector';
 import { Download, RefreshCw, Palette, Sparkles, Layers, Code, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import ColorWheel from '@/components/ColorWheel';
 
 export default function GradientGenerator() {
   const {
@@ -24,17 +24,13 @@ export default function GradientGenerator() {
     downloadGradient
   } = useGradientGenerator();
 
-  const [newColor, setNewColor] = useState('');
   const [apiLinkCopied, setApiLinkCopied] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [colorMode, setColorMode] = useState<'free' | 'recommended'>('free');
 
   useEffect(() => {
     setMounted(true);
     generateGradient();
   }, [generateGradient]);
-
-
 
   const applyPreset = (preset: typeof colorPresets[0]) => {
     setColors(preset.colors);
@@ -68,7 +64,7 @@ export default function GradientGenerator() {
   return (
     <div className="min-h-screen bg-background py-8 sm:py-12 px-4 sm:px-6 lg:px-8 transition-colors duration-300">
       <div className="max-w-7xl mx-auto space-y-12">
-        
+
         {/* Hero Section */}
         <div className="text-center space-y-4 max-w-3xl mx-auto">
           <div className="inline-flex items-center justify-center p-3 bg-primary/10 rounded-2xl mb-2 animate-fade-in">
@@ -78,19 +74,19 @@ export default function GradientGenerator() {
             Gradient Generator
           </h1>
           <p className="text-lg sm:text-xl text-muted-foreground font-sans max-w-2xl mx-auto leading-relaxed">
-            Create stunning, randomized SVG gradients for your next project. 
+            Create stunning, randomized SVG gradients for your next project.
             <span className="text-primary font-medium ml-1">Simple, fast, and open source.</span>
           </p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
-          
+
           {/* Left Column: Preview */}
           <div className="lg:col-span-7 space-y-6">
             <div className="bg-card rounded-2xl shadow-sm border border-border p-1.5 sm:p-2">
               <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-muted/30 flex items-center justify-center border border-border/50">
                 {svgContent ? (
-                  <div 
+                  <div
                     dangerouslySetInnerHTML={{ __html: svgContent }}
                     className="w-full h-full transform transition-transform duration-500 hover:scale-[1.01] [&>svg]:w-full [&>svg]:h-full"
                   />
@@ -100,10 +96,10 @@ export default function GradientGenerator() {
                     <span className="text-sm font-medium font-display">Generating...</span>
                   </div>
                 )}
-                
+
                 <div className="absolute top-4 right-4 flex gap-2">
-                  <Button 
-                    onClick={generateGradient} 
+                  <Button
+                    onClick={generateGradient}
                     disabled={isGenerating}
                     size="sm"
                     className="bg-white/90 dark:bg-black/80 hover:bg-white dark:hover:bg-black text-foreground shadow-sm backdrop-blur-sm border border-black/5 dark:border-white/10"
@@ -116,15 +112,15 @@ export default function GradientGenerator() {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4">
-               <Button 
-                onClick={downloadGradient} 
+               <Button
+                onClick={downloadGradient}
                 disabled={!svgContent}
                 className="flex-1 h-12 text-base font-medium shadow-md hover:shadow-lg transition-all"
               >
                 <Download className="w-5 h-5 mr-2" />
                 Download SVG
               </Button>
-              <Button 
+              <Button
                 variant="outline"
                 className="flex-1 h-12 text-base font-medium border-2 hover:bg-muted/50"
                 onClick={copyApiLink}
@@ -158,7 +154,7 @@ export default function GradientGenerator() {
 
           {/* Right Column: Controls */}
           <div className="lg:col-span-5 space-y-8">
-            
+
             {/* Dimensions */}
             <div className="space-y-4">
               <div className="flex items-center gap-2 pb-2 border-b border-border">
@@ -193,25 +189,23 @@ export default function GradientGenerator() {
               </div>
             </div>
 
-            {/* Colors */}
+            {/* Color Selector - New Design */}
             <div className="space-y-4">
               <div className="flex items-center gap-2 pb-2 border-b border-border">
-                <Palette className="w-5 h-5 text-primary" />
-                <h2 className="font-display font-semibold text-lg">Colors</h2>
+                 <Sparkles className="w-5 h-5 text-primary" />
+                 <h2 className="font-display font-semibold text-lg">Colors</h2>
               </div>
-              
-              <ColorWheel
-                selectedColors={colors}
-                onColorChange={setColors}
-                mode={colorMode}
-                onModeChange={setColorMode}
+
+              <ColorSelector
+                colors={colors}
+                onColorsChange={setColors}
               />
             </div>
 
             {/* Presets */}
              <div className="space-y-4">
               <div className="flex items-center gap-2 pb-2 border-b border-border">
-                 <Sparkles className="w-5 h-5 text-primary" />
+                 <Palette className="w-5 h-5 text-primary" />
                  <h2 className="font-display font-semibold text-lg">Presets</h2>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -221,8 +215,8 @@ export default function GradientGenerator() {
                     onClick={() => applyPreset(preset)}
                     className="group relative overflow-hidden rounded-lg aspect-[3/2] border border-border shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5"
                   >
-                    <div 
-                      className="absolute inset-0" 
+                    <div
+                      className="absolute inset-0"
                       style={{ background: `linear-gradient(135deg, ${preset.colors.join(', ')})` }}
                     />
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />

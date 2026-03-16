@@ -1,258 +1,239 @@
-import { useState, useRef, useEffect } from 'react';
+'use client';
+
+import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { cn } from '@/lib/utils';
+import { hexToHsl, hslToHex, getAngleFromPosition } from '@/lib/colorUtils';
 
 interface ColorWheelProps {
-  selectedColors: string[];
-  onColorChange: (colors: string[]) => void;
-  mode: 'free' | 'recommended';
-  onModeChange: (mode: 'free' | 'recommended') => void;
+  size?: number;
+  color1: string;
+  color2: string;
+  onColor1Change: (color: string) => void;
+  onColor2Change: (color: string) => void;
+  className?: string;
+  showSecondPicker?: boolean;
 }
 
-type ColorFamily = 'red' | 'orange' | 'yellow' | 'green' | 'cyan' | 'blue' | 'purple' | 'pink';
+export function ColorWheel({
+  size = 280,
+  color1,
+  color2,
+  onColor1Change,
+  onColor2Change,
+  className,
+  showSecondPicker = true
+}: ColorWheelProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isDragging1, setIsDragging1] = useState(false);
+  const [isDragging2, setIsDragging2] = useState(false);
+  const [positions, setPositions] = useState<{ x1: number; y1: number; x2: number; y2: number }>({ x1: 0, y1: 0, x2: 0, y2: 0 });
 
-const colorFamilies: { [key in ColorFamily]: { name: string; hue: number } } = {
-  red: { name: '红色', hue: 0 },
-  orange: { name: '橙色', hue: 0.08 },
-  yellow: { name: '黄色', hue: 0.17 },
-  green: { name: '绿色', hue: 0.33 },
-  cyan: { name: '青色', hue: 0.5 },
-  blue: { name: '蓝色', hue: 0.67 },
-  purple: { name: '紫色', hue: 0.83 },
-  pink: { name: '粉色', hue: 0.92 }
-};
+  const center = size / 2;
+  const radius = (size - 40) / 2;
 
-// HSL到RGB的转换函数
-const hslToRgb = (h: number, s: number, l: number): string => {
-  let r, g, b;
-  
-  if (s === 0) {
-    r = g = b = l; // 灰色
-  } else {
-    const hue2rgb = (p: number, q: number, t: number) => {
-      if (t < 0) t += 1;
-      if (t > 1) t -= 1;
-      if (t < 1/6) return p + (q - p) * 6 * t;
-      if (t < 1/2) return q;
-      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-      return p;
+  // 绘制色轮
+  const drawWheel = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // 清空画布
+    ctx.clearRect(0, 0, size, size);
+
+    // 绘制色轮
+    for (let angle = 0; angle < 360; angle++) {
+      const startAngle = ((angle - 90) * Math.PI) / 180;
+      const endAngle = ((angle - 89) * Math.PI) / 180;
+
+      ctx.beginPath();
+      ctx.moveTo(center, center);
+      ctx.arc(center, center, radius, startAngle, endAngle);
+      ctx.closePath();
+
+      const gradient = ctx.createRadialGradient(center, center, 0, center, center, radius);
+      gradient.addColorStop(0, '#ffffff');
+      gradient.addColorStop(1, `hsl(${angle}, 100%, 50%)`);
+      ctx.fillStyle = gradient;
+      ctx.fill();
+    }
+
+    // 绘制中心白色区域
+    ctx.beginPath();
+    ctx.arc(center, center, 8, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.strokeStyle = '#e5e7eb';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }, [center, radius, size]);
+
+  // 计算颜色在色轮上的位置
+  const getPositionFromColor = useCallback((color: string) => {
+    const hsl = hexToHsl(color);
+    const angle = (hsl.h - 90) * (Math.PI / 180);
+    const distance = (hsl.s / 100) * radius * 0.85; // 稍微内缩一点
+
+    return {
+      x: center + Math.cos(angle) * distance,
+      y: center + Math.sin(angle) * distance
     };
-    
-    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-    const p = 2 * l - q;
-    r = hue2rgb(p, q, h + 1/3);
-    g = hue2rgb(p, q, h);
-    b = hue2rgb(p, q, h - 1/3);
-  }
-  
-  const toHex = (x: number) => {
-    const hex = Math.round(x * 255).toString(16);
-    return hex.length === 1 ? '0' + hex : hex;
-  };
-  
-  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-};
+  }, [center, radius]);
 
-// RGB到HSL的转换函数
-const rgbToHsl = (hex: string): [number, number, number] => {
-  const r = parseInt(hex.slice(1, 3), 16) / 255;
-  const g = parseInt(hex.slice(3, 5), 16) / 255;
-  const b = parseInt(hex.slice(5, 7), 16) / 255;
-  
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  let h = 0;
-  let s = 0;
-  const l = (max + min) / 2;
-  
-  if (max !== min) {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    
-    switch (max) {
-      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-      case g: h = (b - r) / d + 2; break;
-      case b: h = (r - g) / d + 4; break;
-    }
-    h /= 6;
-  }
-  
-  return [h, s, l];
-};
+  // 根据位置计算颜色
+  const getColorFromPosition = useCallback((x: number, y: number) => {
+    const dx = x - center;
+    const dy = y - center;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const angle = getAngleFromPosition(dx, dy);
+    const saturation = Math.min(100, (distance / radius) * 100);
 
-// 色彩推荐算法
-const generateRecommendedColors = (baseColor: string): string[] => {
-  const [h, s, l] = rgbToHsl(baseColor);
-  const colors: string[] = [baseColor];
-  
-  // 互补色
-  const complementaryHue = (h + 0.5) % 1;
-  colors.push(hslToRgb(complementaryHue, s, l));
-  
-  // 分裂互补色
-  const splitComplementary1 = (h + 0.42) % 1;
-  const splitComplementary2 = (h + 0.58) % 1;
-  colors.push(hslToRgb(splitComplementary1, s, l));
-  colors.push(hslToRgb(splitComplementary2, s, l));
-  
-  // 三角色
-  const triadic1 = (h + 1/3) % 1;
-  const triadic2 = (h + 2/3) % 1;
-  colors.push(hslToRgb(triadic1, s, l));
-  colors.push(hslToRgb(triadic2, s, l));
-  
-  // 类似色
-  const analogous1 = (h + 0.08) % 1;
-  const analogous2 = (h - 0.08 + 1) % 1;
-  colors.push(hslToRgb(analogous1, s, l));
-  colors.push(hslToRgb(analogous2, s, l));
-  
-  return colors.slice(0, 8); // 最多8个颜色
-};
+    return hslToHex({ h: angle, s: saturation, l: 50 });
+  }, [center, radius]);
 
-const ColorWheel = ({ selectedColors, onColorChange, mode, onModeChange }: ColorWheelProps) => {
-  const [isDragging, setIsDragging] = useState(false);
-  const [selectedFamily, setSelectedFamily] = useState<ColorFamily>('blue');
-  const wheelRef = useRef<HTMLDivElement>(null);
-  
-  const handleWheelClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!wheelRef.current) return;
-    
-    const rect = wheelRef.current.getBoundingClientRect();
-    const centerX = rect.width / 2;
-    const centerY = rect.height / 2;
-    const x = e.clientX - rect.left - centerX;
-    const y = e.clientY - rect.top - centerY;
-    
-    // 计算角度，调整为顺时针方向，0度从顶部开始
-    let angle = Math.atan2(y, x);
-    angle = (angle + Math.PI / 2 + 2 * Math.PI) % (2 * Math.PI);
-    
-    // 基于选中的色系的色相值，结合点击位置的角度计算最终色相
-    // 限制在±15%的色相范围内，与轮盘的渐变范围一致
-    const baseHue = colorFamilies[selectedFamily].hue;
-    const angleRatio = angle / (2 * Math.PI);
-    const hue = (baseHue - 0.1 + angleRatio * 0.3) % 1;
-    
-    // 计算饱和度，基于距离中心的距离
-    const distance = Math.sqrt(x * x + y * y);
-    const saturation = Math.min(distance / (centerX * 0.9), 1);
-    
-    // 计算亮度，基于距离中心的距离（中心更亮，边缘更暗）
-    const lightness = 0.5 + (1 - saturation) * 0.2;
-    
-    const color = hslToRgb(hue, saturation, lightness);
-    
-    if (mode === 'free') {
-      // 自由模式：添加颜色
-      if (selectedColors.length < 8) {
-        onColorChange([...selectedColors, color]);
-      }
+  // 初始化位置 - 只在组件挂载时执行一次
+  useEffect(() => {
+    const pos1 = getPositionFromColor(color1);
+    const pos2 = getPositionFromColor(color2);
+    setPositions({ x1: pos1.x, y1: pos1.y, x2: pos2.x, y2: pos2.y });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 当外部颜色变化时更新位置
+  useEffect(() => {
+    const pos1 = getPositionFromColor(color1);
+    setPositions(prev => ({ ...prev, x1: pos1.x, y1: pos1.y }));
+  }, [color1, getPositionFromColor]);
+
+  useEffect(() => {
+    const pos2 = getPositionFromColor(color2);
+    setPositions(prev => ({ ...prev, x2: pos2.x, y2: pos2.y }));
+  }, [color2, getPositionFromColor]);
+
+  // 绘制色轮
+  useEffect(() => {
+    drawWheel();
+  }, [drawWheel]);
+
+  // 处理鼠标/触摸事件
+  const handleStart = (e: React.MouseEvent | React.TouchEvent, isColor1: boolean) => {
+    e.preventDefault();
+    if (isColor1) {
+      setIsDragging1(true);
     } else {
-      // 推荐模式：生成推荐颜色
-      const recommendedColors = generateRecommendedColors(color);
-      onColorChange(recommendedColors);
+      setIsDragging2(true);
     }
   };
-  
-  const removeColor = (index: number) => {
-    if (selectedColors.length > 1) {
-      onColorChange(selectedColors.filter((_, i) => i !== index));
+
+  const handleMove = useCallback((e: MouseEvent | TouchEvent) => {
+    if (!isDragging1 && !isDragging2) return;
+
+    const container = containerRef.current;
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+
+    let x = clientX - rect.left;
+    let y = clientY - rect.top;
+
+    // 限制在色轮内
+    const dx = x - center;
+    const dy = y - center;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    if (distance > radius) {
+      const ratio = radius / distance;
+      x = center + dx * ratio;
+      y = center + dy * ratio;
     }
-  };
-  
+
+    const newColor = getColorFromPosition(x, y);
+
+    if (isDragging1) {
+      setPositions(prev => ({ ...prev, x1: x, y1: y }));
+      onColor1Change(newColor);
+    } else if (isDragging2) {
+      setPositions(prev => ({ ...prev, x2: x, y2: y }));
+      onColor2Change(newColor);
+    }
+  }, [isDragging1, isDragging2, center, radius, getColorFromPosition, onColor1Change, onColor2Change]);
+
+  const handleEnd = useCallback(() => {
+    setIsDragging1(false);
+    setIsDragging2(false);
+  }, []);
+
+  // 添加全局事件监听
+  useEffect(() => {
+    if (isDragging1 || isDragging2) {
+      window.addEventListener('mousemove', handleMove);
+      window.addEventListener('mouseup', handleEnd);
+      window.addEventListener('touchmove', handleMove);
+      window.addEventListener('touchend', handleEnd);
+
+      return () => {
+        window.removeEventListener('mousemove', handleMove);
+        window.removeEventListener('mouseup', handleEnd);
+        window.removeEventListener('touchmove', handleMove);
+        window.removeEventListener('touchend', handleEnd);
+      };
+    }
+  }, [isDragging1, isDragging2, handleMove, handleEnd]);
+
   return (
-    <div className="space-y-4">
-      {/* 模式选择 */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <button
-            className={`px-4 py-2 rounded-md font-medium ${mode === 'free' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
-            onClick={() => onModeChange('free')}
-          >
-            自由选择
-          </button>
-          <button
-            className={`px-4 py-2 rounded-md font-medium ${mode === 'recommended' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
-            onClick={() => onModeChange('recommended')}
-          >
-            推荐选择
-          </button>
-        </div>
-        <span className="text-xs font-mono bg-muted px-2 py-1 rounded-md text-muted-foreground">
-          {selectedColors.length}/8
+    <div
+      ref={containerRef}
+      className={cn("relative select-none", className)}
+      style={{ width: size, height: size }}
+    >
+      <canvas
+        ref={canvasRef}
+        width={size}
+        height={size}
+        className="rounded-full cursor-crosshair"
+      />
+
+      {/* 颜色1选择器 */}
+      <div
+        className="absolute w-6 h-6 -ml-3 -mt-3 rounded-full border-3 border-white shadow-lg cursor-grab active:cursor-grabbing transition-transform hover:scale-110"
+        style={{
+          left: positions.x1,
+          top: positions.y1,
+          backgroundColor: color1,
+          boxShadow: `0 2px 8px rgba(0,0,0,0.3), 0 0 0 2px ${color1}`,
+          zIndex: isDragging1 ? 10 : 1
+        }}
+        onMouseDown={(e) => handleStart(e, true)}
+        onTouchStart={(e) => handleStart(e, true)}
+      >
+        <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs font-bold text-foreground bg-background/80 px-1.5 py-0.5 rounded">
+          1
         </span>
       </div>
-      
-      {/* 色系选择 */}
-      <div className="space-y-2">
-        <h3 className="text-sm font-medium text-muted-foreground">选择色系</h3>
-        <div className="flex flex-wrap gap-2">
-          {Object.entries(colorFamilies).map(([key, { name, hue }]) => (
-            <button
-              key={key}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ease-in-out ${selectedFamily === key ? 'ring-2 ring-primary shadow-md scale-105' : 'shadow-sm hover:shadow-md hover:scale-105'}`}
-              style={{ 
-                backgroundColor: hslToRgb(hue, 0.7, 0.6),
-                color: 'white',
-                textShadow: '0 1px 2px rgba(0,0,0,0.2)'
-              }}
-              onClick={() => setSelectedFamily(key as ColorFamily)}
-            >
-              {name}
-            </button>
-          ))}
-        </div>
-      </div>
-      
-      {/* 色轮 */}
-      <div className="flex justify-center">
+
+      {/* 颜色2选择器 */}
+      {showSecondPicker && (
         <div
-          ref={wheelRef}
-          className="relative w-64 h-64 rounded-full cursor-pointer shadow-md"
+          className="absolute w-6 h-6 -ml-3 -mt-3 rounded-full border-3 border-white shadow-lg cursor-grab active:cursor-grabbing transition-transform hover:scale-110"
           style={{
-            background: `linear-gradient(
-              90deg,
-              ${hslToRgb((colorFamilies[selectedFamily].hue - 0.1) % 1, 1, 0.5)},
-              ${hslToRgb(colorFamilies[selectedFamily].hue, 1, 0.5)},
-              ${hslToRgb((colorFamilies[selectedFamily].hue + 0.1) % 1, 1, 0.5)},
-              ${hslToRgb((colorFamilies[selectedFamily].hue + 0.15) % 1, 1, 0.5)},
-              ${hslToRgb(colorFamilies[selectedFamily].hue + 0.2, 1, 0.5)},
-              ${hslToRgb((colorFamilies[selectedFamily].hue - 0.1) % 1, 1, 0.5)}
-            )`
+            left: positions.x2,
+            top: positions.y2,
+            backgroundColor: color2,
+            boxShadow: `0 2px 8px rgba(0,0,0,0.3), 0 0 0 2px ${color2}`,
+            zIndex: isDragging2 ? 10 : 1
           }}
-          onClick={handleWheelClick}
+          onMouseDown={(e) => handleStart(e, false)}
+          onTouchStart={(e) => handleStart(e, false)}
         >
-          <div className="absolute inset-0 rounded-full bg-gradient-to-b from-white/0 via-white/10 to-black/30"></div>
-          <div className="absolute inset-4 rounded-full bg-background border border-border"></div>
-          <div className="absolute inset-0 rounded-full flex items-center justify-center">
-            <div className="w-2/3 h-2/3 rounded-full bg-gradient-to-b from-transparent via-white/50 to-transparent"></div>
-          </div>
+          <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs font-bold text-foreground bg-background/80 px-1.5 py-0.5 rounded">
+            2
+          </span>
         </div>
-      </div>
-      
-      {/* 已选择的颜色 */}
-      <div className="space-y-2">
-        <h3 className="text-sm font-medium text-muted-foreground">已选择的颜色</h3>
-        <div className="flex flex-wrap gap-2">
-          {selectedColors.map((color, index) => (
-            <div key={index} className="relative flex items-center gap-2">
-              <div 
-                className="w-8 h-8 rounded-md border border-border" 
-                style={{ backgroundColor: color }}
-              ></div>
-              <span className="text-xs font-mono">{color.toUpperCase()}</span>
-              <button
-                className="text-muted-foreground hover:text-destructive"
-                onClick={() => removeColor(index)}
-                disabled={selectedColors.length <= 1}
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
+      )}
     </div>
   );
-};
-
-export default ColorWheel;
+}
